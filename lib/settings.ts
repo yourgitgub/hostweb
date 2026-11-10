@@ -5,7 +5,7 @@ import {
   TEMP_ZONE,
   LANDING_HOST,
 } from "./constants";
-import { getDb } from "./env";
+import { getDb, getEnv } from "./env";
 import { nowIso } from "./crypto";
 
 export type PublicSettings = {
@@ -53,19 +53,25 @@ export async function getPublicSettings(): Promise<PublicSettings> {
   };
 }
 
+/**
+ * Credentials resolution order (never invent secrets):
+ * 1) Worker env / wrangler secrets (CLOUDFLARE_API_TOKEN, CLOUDWAYS_ACCESS_TOKEN, …)
+ * 2) admin_settings values set in backend UI
+ */
 export async function getAdminSettings(): Promise<AdminSettings> {
   const m = await getMap();
   const pub = await getPublicSettings();
+  const env = getEnv();
   return {
     ...pub,
     poolMinReady: Number(m.pool_min_ready ?? 2),
     cloudwaysRegion: m.cloudways_region || "singapore",
     cloudwaysCloud: m.cloudways_cloud || "do",
     cloudwaysInstanceType: m.cloudways_instance_type || "do_premium_2gb",
-    cloudflareApiToken: m.cloudflare_api_token || "",
-    cloudflareAccountId: m.cloudflare_account_id || "",
-    cloudflareZoneIdXgb: m.cloudflare_zone_id_xgb || "",
-    cloudwaysApiToken: m.cloudways_api_token || "",
+    cloudflareApiToken: env.CLOUDFLARE_API_TOKEN || m.cloudflare_api_token || "",
+    cloudflareAccountId: env.CLOUDFLARE_ACCOUNT_ID || m.cloudflare_account_id || "",
+    cloudflareZoneIdXgb: env.CLOUDFLARE_ZONE_ID_XGB || m.cloudflare_zone_id_xgb || "",
+    cloudwaysApiToken: env.CLOUDWAYS_ACCESS_TOKEN || m.cloudways_api_token || "",
   };
 }
 
@@ -87,4 +93,14 @@ export function maskSecret(value: string): string {
   if (!value) return "";
   if (value.length <= 8) return "••••••••";
   return `${value.slice(0, 4)}…${value.slice(-4)}`;
+}
+
+export async function hasCloudflareDns(): Promise<boolean> {
+  const s = await getAdminSettings();
+  return Boolean(s.cloudflareApiToken && s.cloudflareZoneIdXgb);
+}
+
+export async function hasCloudways(): Promise<boolean> {
+  const s = await getAdminSettings();
+  return Boolean(s.cloudwaysApiToken);
 }

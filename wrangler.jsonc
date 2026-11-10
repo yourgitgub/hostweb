@@ -1,0 +1,33 @@
+/**
+ * Companion Wrangler config for D1 migrations + secrets on Worker `host2pro`.
+ * App deploy itself uses vinext/`cloudflare.config.ts` via `npm run deploy`.
+ *
+ * Create D1 once:  npx wrangler d1 create host2pro-db
+ * Apply schema:    npm run db:migrate:remote
+ * Put secrets:     npm run secrets:list  (see README)
+ */
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "host2pro",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-11-10",
+  "compatibility_flags": ["nodejs_compat"],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "host2pro-db",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "queues": {
+    "producers": [{ "binding": "JOBS", "queue": "host2pro-jobs" }],
+    "consumers": [{ "queue": "host2pro-jobs", "max_batch_size": 5, "max_batch_timeout": 5 }]
+  },
+  "triggers": {
+    "crons": ["* * * * *"]
+  },
+  "vars": {
+    "ENVIRONMENT": "production"
+  }
+}

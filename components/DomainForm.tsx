@@ -40,7 +40,8 @@ export function DomainForm() {
         />
       </div>
       <p className="text-sm text-[var(--muted)]">
-        ซื้อผ่าน Cloudflare Registrar เมื่อแอดมินตั้งค่า API แล้ว — ตอนนี้เป็น stub ที่บันทึกคำสั่งใน D1
+        ซื้อผ่าน Cloudflare Registrar API (check → register). ต้องตั้ง CLOUDFLARE_API_TOKEN + account id
+        และมี billing/registrant ในบัญชี Cloudflare
       </p>
       {msg ? <p className="text-sm text-[var(--sand)]">{msg}</p> : null}
       <button className="btn btn-primary" disabled={loading} type="submit">

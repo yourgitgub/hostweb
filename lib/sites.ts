@@ -1,6 +1,6 @@
 import { SITE_TTL_DAYS } from "./constants";
-import { deleteTempHostname, upsertTempCname } from "./cloudflare-dns";
-import { extractOperationId, powerServer, setAppCname } from "./cloudways";
+import { attachDomainDns, retireTempHostname, upsertTempCname } from "./cloudflare-dns";
+import { extractOperationId, powerServer, setAppAliases, setAppCname } from "./cloudways";
 import { chargeCredits } from "./credits";
 import { addDaysIso, nowIso, randomId, randomSlug } from "./crypto";
 import { getDb } from "./env";
@@ -96,6 +96,7 @@ export async function deploySite(userId: string, label?: string, customDomain?: 
   const hostname = `${slug}.${settings.tempZone}`;
   const ts = nowIso();
   const expires = addDaysIso(SITE_TTL_DAYS);
+  const custom = customDomain?.trim().toLowerCase() || null;
 
   await db
     .prepare(
@@ -103,18 +104,7 @@ export async function deploySite(userId: string, label?: string, customDomain?: 
         (id, user_id, pool_id, label, temp_slug, temp_hostname, custom_domain, power_state, status, expires_at, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, 'running', 'running', ?, ?, ?)`,
     )
-    .bind(
-      siteId,
-      userId,
-      pool.id,
-      label || settings.packageName,
-      slug,
-      hostname,
-      customDomain?.trim().toLowerCase() || null,
-      expires,
-      ts,
-      ts,
-    )
+    .bind(siteId, userId, pool.id, label || settings.packageName, slug, hostname, custom, expires, ts, ts)
     .run();
 
   // DNS + Cloudways Host acceptance (best-effort; never expose origin to customer)
@@ -122,6 +112,11 @@ export async function deploySite(userId: string, label?: string, customDomain?: 
     await upsertTempCname(hostname, pool.cloudways_app_fqdn);
     if (pool.cloudways_server_id && pool.cloudways_app_id) {
       await setAppCname(pool.cloudways_server_id, pool.cloudways_app_id, hostname);
+      const aliases = [hostname, custom].filter(Boolean) as string[];
+      if (aliases.length) await setAppAliases(pool.cloudways_server_id, pool.cloudways_app_id, aliases);
+    }
+    if (custom) {
+      await attachDomainDns(custom, pool.cloudways_app_fqdn);
     }
   }
 
@@ -148,7 +143,6 @@ export async function sitePower(userId: string, siteId: string, action: "start" 
   const serverId = pool?.cloudways_server_id;
   const isMock = !serverId || serverId.startsWith("mock-");
   if (isMock) {
-    // Local/mock path: flip state immediately (no Cloudways call)
     const next =
       action === "stop" ? "stopped" : action === "start" || action === "reboot" ? "running" : site.power_state;
     await db
@@ -164,11 +158,28 @@ export async function sitePower(userId: string, siteId: string, action: "start" 
   const res = await powerServer(cwAction, serverId);
   if (!res.ok) return { ok: false as const, error: res.error };
   const opId = extractOperationId(res.data);
+  const pendingState = action === "stop" ? "stopped" : "running";
   await db
     .prepare(
-      `UPDATE sites SET power_state = 'pending', last_operation_id = ?, updated_at = ? WHERE id = ?`,
+      `UPDATE sites SET power_state = 'pending', status = ?, last_operation_id = ?, updated_at = ? WHERE id = ?`,
     )
-    .bind(opId, nowIso(), siteId)
+    .bind(pendingState, opId, nowIso(), siteId)
+    .run();
+  // Store intended final power in operations table for reconcile
+  await db
+    .prepare(
+      `INSERT INTO operations (id, provider, provider_operation_id, kind, site_id, status, detail_json, created_at, updated_at)
+       VALUES (?, 'cloudways', ?, ?, ?, 'running', ?, ?, ?)`,
+    )
+    .bind(
+      randomId(),
+      opId,
+      action,
+      siteId,
+      JSON.stringify({ intended: pendingState }),
+      nowIso(),
+      nowIso(),
+    )
     .run();
   return { ok: true as const, site: await getSite(userId, siteId), operationId: opId };
 }
@@ -187,7 +198,72 @@ export async function deleteSite(userId: string, siteId: string) {
     )
     .bind(ts, ts, siteId)
     .run();
-  await deleteTempHostname(site.temp_hostname);
+  await retireTempHostname(site.temp_hostname);
+  return { ok: true as const };
+}
+
+export async function attachDomainToSite(userId: string, siteId: string, domainId: string) {
+  const db = getDb();
+  const site = await db
+    .prepare(`SELECT * FROM sites WHERE id = ? AND user_id = ? AND status != 'deleted'`)
+    .bind(siteId, userId)
+    .first<SiteRow & { pool_id: string | null }>();
+  if (!site) return { ok: false as const, error: "ไม่พบไซต์" };
+
+  const domain = await db
+    .prepare(`SELECT * FROM domains WHERE id = ? AND user_id = ?`)
+    .bind(domainId, userId)
+    .first<{ id: string; name: string; cloudflare_zone_id: string | null; status: string }>();
+  if (!domain) return { ok: false as const, error: "ไม่พบโดเมน" };
+
+  const pool = site.pool_id
+    ? await db
+        .prepare(`SELECT cloudways_server_id, cloudways_app_id, cloudways_app_fqdn FROM provider_pool WHERE id = ?`)
+        .bind(site.pool_id)
+        .first<{
+          cloudways_server_id: string | null;
+          cloudways_app_id: string | null;
+          cloudways_app_fqdn: string | null;
+        }>()
+    : null;
+
+  if (!pool?.cloudways_app_fqdn) {
+    // Still record attachment for mock sites
+    await db
+      .prepare(
+        `UPDATE domains SET site_id = ?, status = 'attached', updated_at = ? WHERE id = ?`,
+      )
+      .bind(siteId, nowIso(), domainId)
+      .run();
+    await db
+      .prepare(`UPDATE sites SET custom_domain = ?, updated_at = ? WHERE id = ?`)
+      .bind(domain.name, nowIso(), siteId)
+      .run();
+    return { ok: true as const, stub: true as const };
+  }
+
+  const dns = await attachDomainDns(domain.name, pool.cloudways_app_fqdn, domain.cloudflare_zone_id || undefined);
+  if (!dns.ok && !("stub" in dns && dns.stub)) {
+    return { ok: false as const, error: dns.error };
+  }
+  if (pool.cloudways_server_id && pool.cloudways_app_id) {
+    await setAppAliases(pool.cloudways_server_id, pool.cloudways_app_id, [
+      site.temp_hostname,
+      domain.name,
+    ]);
+  }
+
+  await db
+    .prepare(
+      `UPDATE domains SET site_id = ?, status = 'attached', cloudflare_zone_id = COALESCE(?, cloudflare_zone_id), updated_at = ? WHERE id = ?`,
+    )
+    .bind(siteId, "zoneId" in dns ? dns.zoneId : null, nowIso(), domainId)
+    .run();
+  await db
+    .prepare(`UPDATE sites SET custom_domain = ?, updated_at = ? WHERE id = ?`)
+    .bind(domain.name, nowIso(), siteId)
+    .run();
+
   return { ok: true as const };
 }
 

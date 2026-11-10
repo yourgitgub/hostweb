@@ -2,7 +2,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { SESSION_COOKIE, SESSION_DAYS } from "./constants";
 import { addDaysIso, hashPassword, nowIso, randomId, sha256Hex, verifyPassword } from "./crypto";
-import { getDb, getEnv } from "./env";
+import { getDb, getEnv, isProduction } from "./env";
 
 export type UserRow = {
   id: string;
@@ -88,10 +88,10 @@ async function createSession(userId: string): Promise<void> {
     .bind(id, userId, tokenHash, expires, ts)
     .run();
   const jar = await cookies();
+  const secure = isProduction();
   jar.set(SESSION_COOKIE, token, {
     httpOnly: true,
-    // Local vite/workerd is often http://localhost — secure cookies would not stick.
-    secure: false,
+    secure,
     sameSite: "lax",
     path: "/",
     expires: new Date(expires),
@@ -105,7 +105,13 @@ export async function logoutUser(): Promise<void> {
     const hash = await sha256Hex(token);
     await getDb().prepare("DELETE FROM sessions WHERE token_hash = ?").bind(hash).run();
   }
-  jar.set(SESSION_COOKIE, "", { httpOnly: true, secure: false, sameSite: "lax", path: "/", maxAge: 0 });
+  jar.set(SESSION_COOKIE, "", {
+    httpOnly: true,
+    secure: isProduction(),
+    sameSite: "lax",
+    path: "/",
+    maxAge: 0,
+  });
 }
 
 export async function getCurrentUser(): Promise<UserRow | null> {

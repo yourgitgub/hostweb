@@ -1,6 +1,7 @@
 import { withDb, bad, json } from "@/lib/api";
 import { getCurrentUser } from "@/lib/auth";
 import { nowIso } from "@/lib/crypto";
+import { getEnv } from "@/lib/env";
 import { getAdminSettings, maskSecret, setSettings } from "@/lib/settings";
 
 export async function GET() {
@@ -8,6 +9,7 @@ export async function GET() {
     const user = await getCurrentUser();
     if (!user || user.role !== "admin") return bad("Forbidden", 403);
     const s = await getAdminSettings();
+    const env = getEnv();
     return json({
       ok: true,
       settings: {
@@ -16,6 +18,12 @@ export async function GET() {
         cloudwaysApiToken: maskSecret(s.cloudwaysApiToken),
         cloudflareApiTokenSet: Boolean(s.cloudflareApiToken),
         cloudwaysApiTokenSet: Boolean(s.cloudwaysApiToken),
+        credentialsFromEnv: {
+          cloudflareApiToken: Boolean(env.CLOUDFLARE_API_TOKEN),
+          cloudflareAccountId: Boolean(env.CLOUDFLARE_ACCOUNT_ID),
+          cloudflareZoneIdXgb: Boolean(env.CLOUDFLARE_ZONE_ID_XGB),
+          cloudwaysAccessToken: Boolean(env.CLOUDWAYS_ACCESS_TOKEN),
+        },
       },
     });
   });
