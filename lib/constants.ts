@@ -1,0 +1,13 @@
+export const PACKAGE_NAME = "Wordpress";
+export const PACKAGE_PRICE_THB = 3000;
+export const DEFAULT_FX_USDT_THB = 34.5;
+export const RECEIVE_WALLET_TRC20 = "TMAm332oS6bBhCeDbGqHGG1vwZPTn9iRzq";
+export const TEMP_ZONE = "xgb.app";
+export const LANDING_HOST = "wordpress.xgb.app";
+export const SESSION_COOKIE = "h2p_session";
+export const SESSION_DAYS = 14;
+export const USDT_PENDING_TIMEOUT_MIN = 30;
+export const CREDIT_POLL_MS = 30_000;
+export const SITE_TTL_DAYS = 30;
+export const CLOUDWAYS_API_BASE = "https://api.cloudways.com/api/v2";
+export const MAX_INSTANCE_USD = 30;

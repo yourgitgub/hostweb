@@ -1,0 +1,12 @@
+# Copy to .dev.vars (gitignored). Never commit real secrets.
+ENVIRONMENT=development
+SESSION_SECRET=local-dev-session-secret-change-me
+JOB_TOKEN=local-dev-job-token
+BOOTSTRAP_ADMIN_EMAIL=admin@host2pro.local
+BOOTSTRAP_ADMIN_PASSWORD=changeme-admin-8
+
+# Optional live integrations (leave empty to use mock pool / stub registrar)
+CLOUDFLARE_API_TOKEN=
+CLOUDFLARE_ACCOUNT_ID=
+CLOUDFLARE_ZONE_ID_XGB=
+CLOUDWAYS_ACCESS_TOKEN=
