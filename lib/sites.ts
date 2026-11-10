@@ -145,19 +145,23 @@ export async function sitePower(userId: string, siteId: string, action: "start" 
     .bind(site.pool_id)
     .first<{ cloudways_server_id: string | null }>();
 
-  if (!pool?.cloudways_server_id) {
-    // Local/mock path: flip state immediately
+  const serverId = pool?.cloudways_server_id;
+  const isMock = !serverId || serverId.startsWith("mock-");
+  if (isMock) {
+    // Local/mock path: flip state immediately (no Cloudways call)
     const next =
       action === "stop" ? "stopped" : action === "start" || action === "reboot" ? "running" : site.power_state;
     await db
-      .prepare(`UPDATE sites SET power_state = ?, status = ?, updated_at = ? WHERE id = ?`)
+      .prepare(
+        `UPDATE sites SET power_state = ?, status = ?, last_operation_id = NULL, updated_at = ? WHERE id = ?`,
+      )
       .bind(next, next, nowIso(), siteId)
       .run();
     return { ok: true as const, site: await getSite(userId, siteId) };
   }
 
   const cwAction = action === "reboot" ? "restart" : action;
-  const res = await powerServer(cwAction, pool.cloudways_server_id);
+  const res = await powerServer(cwAction, serverId);
   if (!res.ok) return { ok: false as const, error: res.error };
   const opId = extractOperationId(res.data);
   await db

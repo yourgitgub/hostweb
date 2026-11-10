@@ -136,9 +136,10 @@ export async function seedMockReadyPool(count = 1) {
       )
       .bind(
         id,
-        `mock-srv-${id.slice(0, 6)}`,
-        `mock-app-${id.slice(0, 6)}`,
-        `origin-hidden.example.invalid`,
+        // Leave Cloudways IDs null so power controls use local mock path until real API is configured
+        null,
+        null,
+        null,
         `mock-${id.slice(0, 6)}`,
         ts,
         ts,
