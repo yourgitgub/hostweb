@@ -16,11 +16,13 @@ export default defineConfig({
     entrypoint: "./worker/index.ts",
     compatibilityDate: "2026-11-10",
     compatibilityFlags: ["nodejs_compat"],
+    workersDev: true,
+    previewUrls: true,
     observability: {
       enabled: true,
       traces: { enabled: true },
     },
-    // Bind production hostname; add more via dashboard or domains array after zone ownership
+    // Bind production hostname; requires xgb.app zone in the same Workers account
     domains: ["wordpress.xgb.app"],
     assets: {
       htmlHandling: "none",
@@ -37,10 +39,10 @@ export default defineConfig({
       IMAGES: bindings.images(),
       DB: bindings.d1({ name: "host2pro-db" }),
       JOBS: bindings.queue({ name: "host2pro-jobs" }),
-      // Local defaults — override in production with secrets / vars
-      ENVIRONMENT: bindings.text("development"),
-      SESSION_SECRET: bindings.text("local-dev-session-secret-change-me"),
-      JOB_TOKEN: bindings.text("local-dev-job-token"),
+      // Production defaults — SESSION_SECRET / JOB_TOKEN set via `wrangler secret put`
+      ENVIRONMENT: bindings.text("production"),
+      SESSION_SECRET: bindings.secret(),
+      JOB_TOKEN: bindings.secret(),
       BOOTSTRAP_ADMIN_EMAIL: bindings.text("admin@host2pro.local"),
       BOOTSTRAP_ADMIN_PASSWORD: bindings.text("changeme-admin-8"),
       // Empty placeholders — fill via wrangler secret / .dev.vars (not git)
