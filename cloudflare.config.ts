@@ -22,7 +22,7 @@ export default defineConfig({
       enabled: true,
       traces: { enabled: true },
     },
-    // Bind production hostname; requires xgb.app zone in the same Workers account
+    // Custom domain on zone account John.kelerman.007; wildcard route for temp {slug}.xgb.app 301s
     domains: ["wordpress.xgb.app"],
     assets: {
       htmlHandling: "none",
@@ -33,6 +33,8 @@ export default defineConfig({
       triggers.queue({ name: "host2pro-jobs", maxBatchSize: 5, maxBatchTimeout: 5 }),
       // Every minute: USDT poll (~30s product cadence approximated), pool refill, expiry
       triggers.scheduled({ schedule: "* * * * *" }),
+      // Optional deleted-temp fallback (needs proxied * DNS on xgb.app)
+      triggers.fetch({ pattern: "*.xgb.app/*", zone: "xgb.app" }),
     ],
     env: {
       ASSETS: bindings.assets(),
@@ -45,10 +47,10 @@ export default defineConfig({
       JOB_TOKEN: bindings.secret(),
       BOOTSTRAP_ADMIN_EMAIL: bindings.text("admin@host2pro.local"),
       BOOTSTRAP_ADMIN_PASSWORD: bindings.text("changeme-admin-8"),
-      // Empty placeholders — fill via wrangler secret / .dev.vars (not git)
+      // Account/zone for live CF DNS paths (API token still via secret / Admin UI)
       CLOUDFLARE_API_TOKEN: bindings.text(""),
-      CLOUDFLARE_ACCOUNT_ID: bindings.text(""),
-      CLOUDFLARE_ZONE_ID_XGB: bindings.text(""),
+      CLOUDFLARE_ACCOUNT_ID: bindings.text("aac35693fe24cf2038e63802554144e6"),
+      CLOUDFLARE_ZONE_ID_XGB: bindings.text("7c110c5185ab879333ce045d9b4705a6"),
       CLOUDWAYS_ACCESS_TOKEN: bindings.text(""),
     },
   }),
